@@ -5,6 +5,10 @@ setup(
     version="0.1",
     packages=find_packages(),
     install_requires=[
-        # List your package dependencies here
-    ],
+        'fastapi',
+        'google-cloud-pubsub',
+        'google-auth',
+        'starlette',
+        'httpx',
+    ]
 )

@@ -1,6 +1,7 @@
 from datetime import datetime
-from fastapi import Request, Response 
+from fastapi import Request, Response
 from google.cloud import pubsub_v1
+from google.oauth2 import service_account  # type: ignore
 from starlette.concurrency import iterate_in_threadpool
 from starlette.types import Message
 from typing import Any
@@ -9,24 +10,28 @@ import httpx
 import json
 import time
 
+
 async def set_body(request: Request, body: bytes):
     async def receive() -> Message:
         return {"type": "http.request", "body": body}
     request._receive = receive
 
+
 async def get_body(request: Request) -> bytes:
- body = await request.body()
- await set_body(request, body)
- return body
+    body = await request.body()
+    await set_body(request, body)
+    return body
+
 
 class Payload:
     def __init__(self, **kwargs):
         self.timestamp = datetime.now().isoformat()
         self.__dict__.update(kwargs)
 
+
 class APIToolkit:
-    def __init__ (self):
-        self.metadata = Any 
+    def __init__(self):
+        self.metadata = Any
         self.publisher = Any
         self.topic_path = Any
 
@@ -37,12 +42,16 @@ class APIToolkit:
             resp = await client.get(url, headers=headers)
         self.debug = debug
         self.metadata = resp.json()
-        self.publisher = pubsub_v1.PublisherClient()
-        self.topic_path = self.publisher.topic_path(self.metadata['pubsub_project_id'], self.metadata['topic_id'])
+        credentials = service_account.Credentials.from_service_account_info(
+            self.metadata["pubsub_push_service_account"])
+        self.publisher = pubsub_v1.PublisherClient(credentials=credentials)
+        self.topic_path = 'projects/{project_id}/topics/{topic}'.format(
+            project_id=self.metadata['pubsub_project_id'],
+            topic=self.metadata['topic_id'],
+        )
 
     def publish_message(self, payload: Payload):
         data = json.dumps(payload.__dict__).encode('utf-8')
-        
         if self.debug:
             print("APIToolkit: publish message")
             json_formatted_str = json.dumps(payload.__dict__, indent=2)
@@ -50,7 +59,6 @@ class APIToolkit:
 
         future = self.publisher.publish(self.topic_path, data=data)
         return future.result()
-
 
     def build_payload(self, sdk_type: str, request: Request, response: Response, request_body: bytes, response_body: bytes, duration: float):
         route_pattern = request.scope["route"].path
@@ -74,7 +82,7 @@ class APIToolkit:
             host=base_url,
             raw_url=full_path,
             referer=request.headers.get('referer', ""),
-            project_id=self.metadata["project_id"] ,
+            project_id=self.metadata["project_id"],
             url_path=route_pattern,
             response_body=base64.b64encode(response_body).decode("utf-8"),
             request_body=base64.b64encode(request_body).decode("utf-8"),
@@ -82,8 +90,6 @@ class APIToolkit:
             duration=duration,
         )
         return payload
-
-
 
     async def middleware(self, request: Request, call_next):
         start_time = time.perf_counter_ns()
