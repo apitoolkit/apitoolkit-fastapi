@@ -3,6 +3,7 @@ from fastapi import Request, Response
 from google.cloud import pubsub_v1
 from google.oauth2 import service_account  # type: ignore
 from starlette.concurrency import iterate_in_threadpool
+from jsonpath_ng import parse  # type: ignore
 from starlette.types import Message
 from typing import Any
 import base64
@@ -34,13 +35,22 @@ class APIToolkit:
         self.metadata = Any
         self.publisher = Any
         self.topic_path = Any
+        self.redact_headers = ['authorization', 'cookie']
+        self.redact_request_body = []
+        self.redact_response_body = []
+        self.debug = False
 
-    async def initialize(self, api_key: str, debug=False, root_url="https://app.apitoolkit.io"):
+    async def initialize(self, api_key: str, debug=False, root_url="https://app.apitoolkit.io", redact_headers=['authorization', 'cookie'], redact_request_body=[], redact_response_body=[]):
+        if debug:
+            print("APIToolkit: initialize")
         url = root_url + "/api/client_metadata"
         headers = {"Authorization": f"Bearer {api_key}"}
         async with httpx.AsyncClient() as client:
             resp = await client.get(url, headers=headers)
         self.debug = debug
+        self.redact_headers = redact_headers
+        self.redact_request_body = redact_request_body
+        self.redact_response_body = redact_response_body
         self.metadata = resp.json()
         credentials = service_account.Credentials.from_service_account_info(
             self.metadata["pubsub_push_service_account"])
@@ -60,23 +70,53 @@ class APIToolkit:
         future = self.publisher.publish(self.topic_path, data=data)
         return future.result()
 
+    def redact_headers_func(self, headers):
+        redacted_headers = {}
+        for header_name, value in headers.items():
+            if header_name.lower() in self.redact_headers or header_name in self.redact_headers:
+                redacted_headers[header_name] = "[CLIENT_REDACTED]"
+            else:
+                redacted_headers[header_name] = value
+        return redacted_headers
+
+    def redact_fields(self, body, paths):
+        try:
+            data = json.loads(body)
+            for path in paths:
+                expr = parse(path)
+                expr.update(data, "[CLIENT_REDACTED]")
+            return json.dumps(data).encode("utf-8")
+        except Exception as e:
+            print(e, body)
+            if isinstance(body, str):
+                return body.encode('utf-8')
+            return body
+
     def build_payload(self, sdk_type: str, request: Request, response: Response, request_body: bytes, response_body: bytes, duration: float):
+        if self.debug:
+            print("APIToolkit: build_payload")
+
         route_pattern = request.scope["route"].path
         path = request.url.path  # "/items/1"
         query = request.url.query  # "q=abc"
         full_path = f"{path}"
         if query:
             full_path += f"?{query}"
-
         scheme = request.url.scheme  # "http"
         netloc = request.url.netloc  # "localhost:8000"
         base_url = f"{scheme}://{netloc}"
+        request_headers = self.redact_headers_func(dict(request.headers))
+        response_headers = self.redact_headers_func(dict(response.headers))
+        request_body = self.redact_fields(
+            request_body.decode("utf-8"), self.redact_request_body)
+        response_body = self.redact_fields(
+            response_body, self.redact_response_body)
 
         payload = Payload(
-            request_headers=dict(request.headers),
+            request_headers=request_headers,
             query_params=dict(request.query_params),
             path_params=dict(request.path_params),
-            response_headers=dict(response.headers),
+            response_headers=response_headers,
             method=request.method,
             sdk_type=sdk_type,
             host=base_url,
@@ -92,6 +132,9 @@ class APIToolkit:
         return payload
 
     async def middleware(self, request: Request, call_next):
+        if self.debug:
+            print("APIToolkit: middleware")
+
         start_time = time.perf_counter_ns()
         await set_body(request, await request.body())
         request_body = await get_body(request)

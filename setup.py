@@ -10,5 +10,6 @@ setup(
         'google-auth',
         'starlette',
         'httpx',
+        'jsonpath-ng',
     ]
 )
