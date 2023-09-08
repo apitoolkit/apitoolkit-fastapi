@@ -10,6 +10,7 @@ import base64
 import httpx
 import json
 import time
+import pytz  # type: ignore
 
 
 async def set_body(request: Request, body: bytes):
@@ -111,7 +112,8 @@ class APIToolkit:
             request_body.decode("utf-8"), self.redact_request_body)
         response_body = self.redact_fields(
             response_body, self.redact_response_body)
-
+        timezone = pytz.timezone("UTC")
+        timestamp = datetime.now(timezone).isoformat()
         payload = Payload(
             request_headers=request_headers,
             query_params=dict(request.query_params),
@@ -119,6 +121,8 @@ class APIToolkit:
             response_headers=response_headers,
             method=request.method,
             sdk_type=sdk_type,
+            proto_major=1,
+            proto_minor=1,
             host=base_url,
             raw_url=full_path,
             referer=request.headers.get('referer', ""),
@@ -128,6 +132,7 @@ class APIToolkit:
             request_body=base64.b64encode(request_body).decode("utf-8"),
             status_code=response.status_code,
             duration=duration,
+            timestamp=timestamp
         )
         return payload
 
