@@ -32,7 +32,9 @@ class Payload:
 
 
 class APIToolkit:
-    def __init__(self):
+    def __init__(self, api_key, debug=False, root_url="https://app.apitoolkit.io",
+                 redact_headers=['authorization', 'cookie'],
+                 redact_request_body=[], redact_response_body=[]):
         self.metadata = Any
         self.publisher = Any
         self.topic_path = Any
@@ -40,14 +42,12 @@ class APIToolkit:
         self.redact_request_body = []
         self.redact_response_body = []
         self.debug = False
-
-    async def initialize(self, api_key: str, debug=False, root_url="https://app.apitoolkit.io", redact_headers=['authorization', 'cookie'], redact_request_body=[], redact_response_body=[]):
         if debug:
             print("APIToolkit: initialize")
         url = root_url + "/api/client_metadata"
         headers = {"Authorization": f"Bearer {api_key}"}
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(url, headers=headers)
+        client = httpx.Client()
+        resp = client.get(url, headers=headers)
         self.debug = debug
         self.redact_headers = redact_headers
         self.redact_request_body = redact_request_body
@@ -139,26 +139,30 @@ class APIToolkit:
     async def middleware(self, request: Request, call_next):
         if self.debug:
             print("APIToolkit: middleware")
+        try:
+            start_time = time.perf_counter_ns()
+            await set_body(request, await request.body())
+            request_body = await get_body(request)
 
-        start_time = time.perf_counter_ns()
-        await set_body(request, await request.body())
-        request_body = await get_body(request)
+            response = await call_next(request)
 
-        response = await call_next(request)
+            response_body = [chunk async for chunk in response.body_iterator]
+            response.body_iterator = iterate_in_threadpool(iter(response_body))
 
-        response_body = [chunk async for chunk in response.body_iterator]
-        response.body_iterator = iterate_in_threadpool(iter(response_body))
+            end_time = time.perf_counter_ns()
+            duration = (end_time - start_time)
 
-        end_time = time.perf_counter_ns()
-        duration = (end_time - start_time)
-
-        payload = self.build_payload(
-            sdk_type='PythonFastApi',
-            request=request,
-            response=response,
-            request_body=request_body,
-            response_body=b''.join(response_body),
-            duration=duration
-        )
-        self.publish_message(payload)
+            payload = self.build_payload(
+                sdk_type='PythonFastApi',
+                request=request,
+                response=response,
+                request_body=request_body,
+                response_body=b''.join(response_body),
+                duration=duration
+            )
+            self.publish_message(payload)
+        except Exception as e:
+            if self.debug:
+                print(e)
+            return response
         return response

@@ -21,13 +21,7 @@ from apitoolkit import APIToolkit
 app = FastAPI()
 
 # Initialize apitoolkit
-apitoolkit = APIToolkit()
-
-@app.on_event('startup')
-async def startup_event():
-    await apitoolkit.initialize(
-            api_key='<API_KEY goes here>',
-        )
+apitoolkit = APIToolkit(api_key='<API_KEY goes here>')
 
 app.middleware('http')(apitoolkit.middleware)
 
@@ -51,21 +45,18 @@ from apitoolkit import APIToolkit
 
 app = FastAPI()
 
-# Initialize apitoolkit
-apitoolkit = APIToolkit()
+# A list of fields to redact from response body
+redact_res = ["$.api_key", "$.password"]
+# A list of fields to redact from request body
+redact_req = ["$.credit-card.cvv", "$.credit-card.name"]
+# A list of fields to redact from request and repsonse headers
+redact_headers = ["Authorization", "Cookie"]
 
-@app.on_event('startup')
-async def startup_event():
-    # A list of fields to redact from response body
-    redact_res = ["$.api_key", "$.password"]
-    # A list of fields to redact from request body
-    redact_req = ["$.credit-card.cvv", "$.credit-card.name"]
-    # A list of fields to redact from request and repsonse headers
-    redact_headers = ["Authorization", "Cookie"]
-    await apitoolkit.initialize(
-            api_key="<API_KEY>", debug=True,redact_response_body=redact_res,
-            redact_request_body=redact_req,redact_headers=redact_headers
-        )
+# Initialize apitoolkit
+apitoolkit = APIToolkit(
+    api_key="<API_KEY>", debug=True,redact_response_body=redact_res,
+    redact_request_body=redact_req,redact_headers=redact_headers
+)
 
 app.middleware('http')(apitoolkit.middleware)
 
