@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from apitoolkit import APIToolkit
+from . import APIToolkit
 import base64
 import json
 
