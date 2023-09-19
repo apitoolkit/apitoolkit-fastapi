@@ -16,7 +16,7 @@ Then add apitoolkit to your app like so (Gin example):
 
 ```php
 from fastapi import FastAPI
-from apitoolkit import APIToolkit
+from apitoolkit_fastapi import APIToolkit
 
 app = FastAPI()
 
@@ -41,7 +41,7 @@ Eg:
 
 ```python
 from fastapi import FastAPI
-from apitoolkit import APIToolkit
+from apitoolkit_fastapi import APIToolkit
 
 app = FastAPI()
 
