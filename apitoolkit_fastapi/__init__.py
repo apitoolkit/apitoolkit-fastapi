@@ -1,4 +1,5 @@
 from datetime import datetime
+import uuid
 from fastapi import Request, Response
 from google.cloud import pubsub_v1
 from google.oauth2 import service_account  # type: ignore
@@ -11,6 +12,7 @@ import httpx
 import json
 import time
 import pytz  # type: ignore
+from apitoolkit_python import observe_request, report_error
 
 
 async def set_body(request: Request, body: bytes):
@@ -34,13 +36,15 @@ class Payload:
 class APIToolkit:
     def __init__(self, api_key, debug=False, root_url="https://app.apitoolkit.io",
                  redact_headers=['authorization', 'cookie'],
-                 redact_request_body=[], redact_response_body=[]):
+                 redact_request_body=[], redact_response_body=[], service_version=None, tags=[]):
         self.metadata = Any
         self.publisher = Any
         self.topic_path = Any
         self.redact_headers = ['authorization', 'cookie']
         self.redact_request_body = []
         self.redact_response_body = []
+        self.service_version = service_version
+        self.tags = tags
         self.debug = False
         if debug:
             print("APIToolkit: initialize")
@@ -61,13 +65,15 @@ class APIToolkit:
             topic=self.metadata['topic_id'],
         )
 
-    def publish_message(self, payload: Payload):
-        data = json.dumps(payload.__dict__).encode('utf-8')
+    def getInfo(self):
+        return {"project_id": self.metadata["project_id"], "service_version": self.service_version, "tags": self.tags}
+
+    def publish_message(self, payload):
+        data = json.dumps(payload).encode('utf-8')
         if self.debug:
             print("APIToolkit: publish message")
-            json_formatted_str = json.dumps(payload.__dict__, indent=2)
+            json_formatted_str = json.dumps(payload, indent=2)
             print(json_formatted_str)
-
         future = self.publisher.publish(self.topic_path, data=data)
         return future.result()
 
@@ -112,57 +118,69 @@ class APIToolkit:
             request_body.decode("utf-8"), self.redact_request_body)
         response_body = self.redact_fields(
             response_body, self.redact_response_body)
+
+        message_id = request.state.apitoolkit_message_id
+        errors = request.state.apitoolkit_errors
+        print(errors)
         timezone = pytz.timezone("UTC")
         timestamp = datetime.now(timezone).isoformat()
-        payload = Payload(
-            request_headers=request_headers,
-            query_params=dict(request.query_params),
-            path_params=dict(request.path_params),
-            response_headers=response_headers,
-            method=request.method,
-            sdk_type=sdk_type,
-            proto_major=1,
-            proto_minor=1,
-            host=base_url,
-            raw_url=full_path,
-            referer=request.headers.get('referer', ""),
-            project_id=self.metadata["project_id"],
-            url_path=route_pattern,
-            response_body=base64.b64encode(response_body).decode("utf-8"),
-            request_body=base64.b64encode(request_body).decode("utf-8"),
-            status_code=response.status_code,
-            duration=duration,
-            timestamp=timestamp
-        )
+        payload = {
+            "request_headers": request_headers,
+            "query_params": dict(request.query_params),
+            "path_params": dict(request.path_params),
+            "response_headers": response_headers,
+            "method": request.method,
+            "sdk_type": sdk_type,
+            "proto_major": 1,
+            "proto_minor": 1,
+            "host": base_url,
+            "raw_url": full_path,
+            "referer": request.headers.get('referer', ""),
+            "project_id": self.metadata["project_id"],
+            "url_path": route_pattern,
+            "response_body": base64.b64encode(response_body).decode("utf-8"),
+            "request_body": base64.b64encode(request_body).decode("utf-8"),
+            "status_code": response.status_code,
+            "duration": duration,
+            "timestamp": timestamp,
+            "service_version": self.service_version,
+            "tags": self.tags,
+            "msg_id": message_id,
+            "errors": errors or [],
+            "parent_id": None
+        }
         return payload
 
     async def middleware(self, request: Request, call_next):
         if self.debug:
             print("APIToolkit: middleware")
-        try:
             start_time = time.perf_counter_ns()
+            request.state.apitoolkit_message_id = str(uuid.uuid4())
+            request.state.apitoolkit_errors = []
+            request.state.apitoolkit_client = self
             await set_body(request, await request.body())
             request_body = await get_body(request)
 
             response = await call_next(request)
+            try:
+                response_body = [chunk async for chunk in response.body_iterator]
+                response.body_iterator = iterate_in_threadpool(
+                    iter(response_body))
 
-            response_body = [chunk async for chunk in response.body_iterator]
-            response.body_iterator = iterate_in_threadpool(iter(response_body))
+                end_time = time.perf_counter_ns()
+                duration = (end_time - start_time)
 
-            end_time = time.perf_counter_ns()
-            duration = (end_time - start_time)
-
-            payload = self.build_payload(
-                sdk_type='PythonFastApi',
-                request=request,
-                response=response,
-                request_body=request_body,
-                response_body=b''.join(response_body),
-                duration=duration
-            )
-            self.publish_message(payload)
-        except Exception as e:
-            if self.debug:
-                print(e)
-            return response
-        return response
+                payload = self.build_payload(
+                    sdk_type='PythonFastApi',
+                    request=request,
+                    response=response,
+                    request_body=request_body,
+                    response_body=b''.join(response_body),
+                    duration=duration
+                )
+                self.publish_message(payload)
+                return response
+            except Exception as e:
+                if self.debug:
+                    print(e)
+                return response

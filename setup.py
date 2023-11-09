@@ -18,5 +18,6 @@ setup(
         'starlette',
         'httpx',
         'jsonpath-ng',
+        'apitoolkit-python'
     ]
 )
