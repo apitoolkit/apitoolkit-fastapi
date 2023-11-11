@@ -94,7 +94,6 @@ class APIToolkit:
                 expr.update(data, "[CLIENT_REDACTED]")
             return json.dumps(data).encode("utf-8")
         except Exception as e:
-            print(e, body)
             if isinstance(body, str):
                 return body.encode('utf-8')
             return body
@@ -121,7 +120,6 @@ class APIToolkit:
 
         message_id = request.state.apitoolkit_message_id
         errors = request.state.apitoolkit_errors
-        print(errors)
         timezone = pytz.timezone("UTC")
         timestamp = datetime.now(timezone).isoformat()
         payload = {
