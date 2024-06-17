@@ -7,7 +7,7 @@
 
 [![APItoolkit SDK](https://img.shields.io/badge/APItoolkit-SDK-0068ff?logo=fastapi)](https://github.com/topics/apitoolkit-sdk) [![PyPI - Version](https://img.shields.io/pypi/v/apitoolkit-fastapi)](https://pypi.org/project/apitoolkit-fastapi) [![PyPI - Downloads](https://img.shields.io/pypi/dw/apitoolkit-fastapi)](https://pypi.org/project/apitoolkit-fastapi) [![Join Discord Server](https://img.shields.io/badge/Chat-Discord-7289da)](https://discord.gg/dEB6EjQnKB) [![APItoolkit Docs](https://img.shields.io/badge/Read-Docs-0068ff)](https://apitoolkit.io/docs/sdks/python/fastapi?utm_source=github-sdks) 
 
-APItoolkit is an end-to-end API and web services management toolkit for engineers and customer support teams. To integrate your FastAPI application with APItoolkit, you need to use this SDK to monitor incoming traffic, aggregate the requests, and then deliver them to the APItoolkit's servers.
+APItoolkit is an end-to-end API and web services management toolkit for engineers and customer support teams. To integrate your FastAPI (Python) application with APItoolkit, you need to use this SDK to monitor incoming traffic, aggregate the requests, and then deliver them to the APItoolkit's servers.
 
 </div>
 
