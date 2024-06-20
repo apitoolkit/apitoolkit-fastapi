@@ -152,33 +152,31 @@ class APIToolkit:
     async def middleware(self, request: Request, call_next):
         if self.debug:
             print("APIToolkit: middleware")
-            start_time = time.perf_counter_ns()
-            request.state.apitoolkit_message_id = str(uuid.uuid4())
-            request.state.apitoolkit_errors = []
-            request.state.apitoolkit_client = self
-            await set_body(request, await request.body())
-            request_body = await get_body(request)
+        start_time = time.perf_counter_ns()
+        request.state.apitoolkit_message_id = str(uuid.uuid4())
+        request.state.apitoolkit_errors = []
+        request.state.apitoolkit_client = self
+        await set_body(request, await request.body())
+        request_body = await get_body(request)
 
-            response = await call_next(request)
-            try:
-                response_body = [chunk async for chunk in response.body_iterator]
-                response.body_iterator = iterate_in_threadpool(
-                    iter(response_body))
-
-                end_time = time.perf_counter_ns()
-                duration = (end_time - start_time)
-
-                payload = self.build_payload(
-                    sdk_type='PythonFastApi',
-                    request=request,
-                    response=response,
-                    request_body=request_body,
-                    response_body=b''.join(response_body),
-                    duration=duration
-                )
-                self.publish_message(payload)
-                return response
-            except Exception as e:
-                if self.debug:
-                    print(e)
-                return response
+        response = await call_next(request)
+        try:
+            response_body = [chunk async for chunk in response.body_iterator]
+            response.body_iterator = iterate_in_threadpool(
+                iter(response_body))
+            end_time = time.perf_counter_ns()
+            duration = (end_time - start_time)
+            payload = self.build_payload(
+                sdk_type='PythonFastApi',
+                request=request,
+                response=response,
+                request_body=request_body,
+                response_body=b''.join(response_body),
+                duration=duration
+            )
+            self.publish_message(payload)
+            return response
+        except Exception as e:
+            if self.debug:
+                print(e)
+            return response
