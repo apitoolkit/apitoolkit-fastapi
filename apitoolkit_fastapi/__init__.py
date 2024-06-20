@@ -156,10 +156,10 @@ class APIToolkit:
         request.state.apitoolkit_message_id = str(uuid.uuid4())
         request.state.apitoolkit_errors = []
         request.state.apitoolkit_client = self
-        await set_body(request, await request.body())
-        request_body = await get_body(request)
-
+        request_body = await request.body()
+        request._body = request_body
         response = await call_next(request)
+
         try:
             response_body = [chunk async for chunk in response.body_iterator]
             response.body_iterator = iterate_in_threadpool(
