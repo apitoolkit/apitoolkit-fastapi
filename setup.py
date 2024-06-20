@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="apitoolkit_fastapi",
-    version="0.2.0",
+    version="0.2.1",
     packages=find_packages(),
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -18,6 +18,7 @@ setup(
         'starlette',
         'httpx',
         'jsonpath-ng',
-        'apitoolkit-python'
+        'apitoolkit-python',
+        'pytz'
     ]
 )
