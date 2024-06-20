@@ -110,7 +110,7 @@ class APIToolkit:
             full_path += f"?{query}"
         scheme = request.url.scheme  # "http"
         netloc = request.url.netloc  # "localhost:8000"
-        base_url = f"{scheme}://{netloc}"
+        host = netloc
         request_headers = self.redact_headers_func(dict(request.headers))
         response_headers = self.redact_headers_func(dict(response.headers))
         request_body = self.redact_fields(
@@ -131,7 +131,7 @@ class APIToolkit:
             "sdk_type": sdk_type,
             "proto_major": 1,
             "proto_minor": 1,
-            "host": base_url,
+            "host": host,
             "raw_url": full_path,
             "referer": request.headers.get('referer', ""),
             "project_id": self.metadata["project_id"],
