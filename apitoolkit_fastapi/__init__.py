@@ -98,21 +98,20 @@ class APIToolkit:
                 return body.encode('utf-8')
             return body
 
-    def build_payload(self, sdk_type: str, request: Request, response: Response, request_body: bytes, response_body: bytes, duration: float):
+    def build_payload(self, sdk_type: str, request: Request, response_headers: any, status_code: int, request_body: bytes, response_body: bytes, duration: float):
         if self.debug:
             print("APIToolkit: build_payload")
 
-        route_pattern = request.scope["route"].path
         path = request.url.path  # "/items/1"
+        route_pattern = getattr(request.scope.get('route'), 'path', path)
         query = request.url.query  # "q=abc"
         full_path = f"{path}"
         if query:
             full_path += f"?{query}"
-        scheme = request.url.scheme  # "http"
         netloc = request.url.netloc  # "localhost:8000"
         host = netloc
         request_headers = self.redact_headers_func(dict(request.headers))
-        response_headers = self.redact_headers_func(dict(response.headers))
+        response_headers = self.redact_headers_func(dict(response_headers))
         request_body = self.redact_fields(
             request_body.decode("utf-8"), self.redact_request_body)
         response_body = self.redact_fields(
@@ -138,7 +137,7 @@ class APIToolkit:
             "url_path": route_pattern,
             "response_body": base64.b64encode(response_body).decode("utf-8"),
             "request_body": base64.b64encode(request_body).decode("utf-8"),
-            "status_code": response.status_code,
+            "status_code": status_code,
             "duration": duration,
             "timestamp": timestamp,
             "service_version": self.service_version,
@@ -158,25 +157,37 @@ class APIToolkit:
         request.state.apitoolkit_client = self
         request_body = await request.body()
         request._body = request_body
-        response = await call_next(request)
-
+        err = None
+        response = None
         try:
-            response_body = [chunk async for chunk in response.body_iterator]
-            response.body_iterator = iterate_in_threadpool(
-                iter(response_body))
+            response = await call_next(request)
+            return response
+        except Exception as e:
+            if self.debug:
+                print(e)
+            err = e
+            raise
+        finally: 
+            if err is not None:
+              report_error(request, err)
+            response_body = ''
+            res_headers = {}
+            status_code = 200
+            if response is not None:
+              status_code = response.status_code
+              res_headers = response.headers
+              response_body = [chunk async for chunk in response.body_iterator]
+              response.body_iterator = iterate_in_threadpool(
+                  iter(response_body))
             end_time = time.perf_counter_ns()
             duration = (end_time - start_time)
             payload = self.build_payload(
                 sdk_type='PythonFastApi',
                 request=request,
-                response=response,
+                response_headers=res_headers,
+                status_code=status_code,
                 request_body=request_body,
                 response_body=b''.join(response_body),
                 duration=duration
             )
             self.publish_message(payload)
-            return response
-        except Exception as e:
-            if self.debug:
-                print(e)
-            return response
