@@ -37,9 +37,9 @@ class APIToolkit:
     def __init__(self, api_key, debug=False, root_url="https://app.apitoolkit.io",
                  redact_headers=['authorization', 'cookie'],
                  redact_request_body=[], redact_response_body=[], service_version=None, tags=[]):
-        self.metadata = Any
-        self.publisher = Any
-        self.topic_path = Any
+        self.metadata = None
+        self.publisher = None
+        self.topic_path = None
         self.redact_headers = ['authorization', 'cookie']
         self.redact_request_body = []
         self.redact_response_body = []
@@ -50,25 +50,35 @@ class APIToolkit:
             print("APIToolkit: initialize")
         url = root_url + "/api/client_metadata"
         headers = {"Authorization": f"Bearer {api_key}"}
-        client = httpx.Client()
-        resp = client.get(url, headers=headers)
         self.debug = debug
         self.redact_headers = redact_headers
         self.redact_request_body = redact_request_body
         self.redact_response_body = redact_response_body
-        self.metadata = resp.json()
-        credentials = service_account.Credentials.from_service_account_info(
-            self.metadata["pubsub_push_service_account"])
-        self.publisher = pubsub_v1.PublisherClient(credentials=credentials)
-        self.topic_path = 'projects/{project_id}/topics/{topic}'.format(
-            project_id=self.metadata['pubsub_project_id'],
-            topic=self.metadata['topic_id'],
-        )
+
+        client = httpx.Client()
+        resp = client.get(url, headers=headers)
+        if resp.status_code == 401:
+            raise Exception(f"APIToolkit: {resp.status_code} {resp.text}")
+        elif resp.status_code >= 400:
+            print(f"APIToolkit: {resp.status_code} {resp.text}")
+        else:
+          self.metadata = resp.json()
+          credentials = service_account.Credentials.from_service_account_info(
+              self.metadata["pubsub_push_service_account"])
+          self.publisher = pubsub_v1.PublisherClient(credentials=credentials)
+          self.topic_path = 'projects/{project_id}/topics/{topic}'.format(
+              project_id=self.metadata['pubsub_project_id'],
+              topic=self.metadata['topic_id'],
+          )
 
     def getInfo(self):
         return {"project_id": self.metadata["project_id"], "service_version": self.service_version, "tags": self.tags}
 
     def publish_message(self, payload):
+        if self.publisher is None:
+            if self.debug:
+                print("APIToolkit: publisher is None (restart the server?)")
+            return
         data = json.dumps(payload).encode('utf-8')
         if self.debug:
             print("APIToolkit: publish message")
@@ -181,13 +191,17 @@ class APIToolkit:
                   iter(response_body))
             end_time = time.perf_counter_ns()
             duration = (end_time - start_time)
-            payload = self.build_payload(
-                sdk_type='PythonFastApi',
-                request=request,
-                response_headers=res_headers,
-                status_code=status_code,
-                request_body=request_body,
-                response_body=b''.join(response_body),
-                duration=duration
-            )
-            self.publish_message(payload)
+            if self.metadata is not None:
+               payload = self.build_payload(
+                   sdk_type='PythonFastApi',
+                   request=request,
+                   response_headers=res_headers,
+                   status_code=status_code,
+                   request_body=request_body,
+                   response_body=b''.join(response_body),
+                   duration=duration
+               )
+               self.publish_message(payload)
+            else:
+                if self.debug:
+                    print("APIToolkit: metadata is not set restart server to fix")
