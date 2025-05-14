@@ -7,7 +7,7 @@
 
 > ⚠️ **Archived Repository**  
 > This project has been archived and is no longer maintained here.  
-> ➡️ Active development has moved to a: [**New Repository**](https://github.com/apitoolkit/apitoolkit-python/tree/main/packages/fastapi)
+> ➡️ Active development has moved to a: [**New Repository**](https://github.com/apitoolkit/apitoolkit-python/tree/main/flask)
 </div>
 
 
